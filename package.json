@@ -1,5 +1,5 @@
 {
-  "name": "discord.js",
+  "name": "discord.js-selfbot",
   "version": "12.5.0",
   "description": "A powerful library for interacting with the Discord API",
   "main": "./src/index",
