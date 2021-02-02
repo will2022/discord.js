@@ -19,7 +19,8 @@
 
 ### This is a fork of the [discord.js](https://npmjs.com/package/discord.js) package with the support of user bots. Discord.js removed support for user bots in version 12.
 
-<img src="https://i.imgur.com/hJTedxl.png" width="280" alt="DISCLAIMER"/>
+## <img src="https://i.imgur.com/hJTedxl.png" width="280" alt="DISCLAIMER"/>
+
 ### Using this module is at your own risk and I will not be liable for your Discord account being blocked/deleted.
 ### Userbots/Selfbots are against [Discord TOS](https://discordapp.com/terms) and may result in your account being blocked/deleted.
 
