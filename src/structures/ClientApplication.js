@@ -41,6 +41,26 @@ class ClientApplication extends Application {
      */
     this.owner = data.team ? new Team(this.client, data.team) : data.owner ? this.client.users.add(data.owner) : null;
   }
+
+  /**
+   * Resets the app's secret.
+   * <warn>This is only available when using a user account.</warn>
+   * @returns {Promise<ClientApplication>}
+   */
+  resetSecret() {
+    return this.client.api.oauth2.applications[this.id].reset.post()
+      .then(app => new ClientApplication(this.client, app));
+  }
+
+  /**
+   * Resets the app's bot token.
+   * <warn>This is only available when using a user account.</warn>
+   * @returns {Promise<ClientApplication>}
+   */
+  resetToken() {
+    return this.client.api.oauth2.applications[this.id].bot.reset.post()
+      .then(app => new ClientApplication(this.client, Object.assign({}, this, { bot: app })));
+  }
 }
 
 module.exports = ClientApplication;

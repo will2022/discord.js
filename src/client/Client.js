@@ -135,7 +135,7 @@ class Client extends BaseClient {
     Object.defineProperty(this, 'token', { writable: true });
     if (!this.token && 'DISCORD_TOKEN' in process.env) {
       /**
-       * Authorization token for the logged in bot.
+       * Authorization token for the logged in user/bot.
        * If present, this defaults to `process.env.DISCORD_TOKEN` when instantiating the client
        * <warn>This should be kept private at all times.</warn>
        * @type {?string}
@@ -235,6 +235,20 @@ class Client extends BaseClient {
     super.destroy();
     this.ws.destroy();
     this.token = null;
+  }
+
+  /**
+   * Requests a sync of guild data with Discord.
+   * <info>This can be done automatically every 30 seconds by enabling {@link ClientOptions#sync}.</info>
+   * <warn>This is only available when using a user account.</warn>
+   * @param {Guild[]|Collection<Snowflake, Guild>} [guilds=this.guilds] An array or collection of guilds to sync
+   */
+  syncGuilds(guilds = this.guilds) {
+    if (this.user.bot) return;
+    this.ws.send({
+      op: 12,
+      d: guilds instanceof Collection ? guilds.keyArray() : guilds.map(g => g.id),
+    });
   }
 
   /**
@@ -350,9 +364,9 @@ class Client extends BaseClient {
    * Obtains the OAuth Application of this bot from Discord.
    * @returns {Promise<ClientApplication>}
    */
-  fetchApplication() {
+  fetchApplication(id = '@me') {
     return this.api.oauth2
-      .applications('@me')
+      .applications(id)
       .get()
       .then(app => new ClientApplication(this, app));
   }
@@ -381,6 +395,7 @@ class Client extends BaseClient {
 
   /**
    * Generates a link that can be used to invite the bot to a guild.
+   * <warn>This is only available when using a bot account.</warn>
    * @param {InviteGenerationOptions} [options={}] Options for the invite
    * @returns {Promise<string>}
    * @example

@@ -2,6 +2,7 @@
 
 /* eslint-disable import/order */
 const MessageCollector = require('../MessageCollector');
+const Shared = require('../shared');
 const APIMessage = require('../APIMessage');
 const Snowflake = require('../../util/Snowflake');
 const Collection = require('../../util/Collection');
@@ -164,6 +165,23 @@ class TextBasedChannel {
     return this.client.api.channels[this.id].messages
       .post({ data, files })
       .then(d => this.client.actions.MessageCreate.handle(d).message);
+  }
+
+  /**
+   * Performs a search within the channel.
+   * <warn>This is only available when using a user account.</warn>
+   * @param {MessageSearchOptions} [options={}] Options to pass to the search
+   * @returns {Promise<MessageSearchResult>}
+   * @example
+   * channel.search({ content: 'discord.js', before: '2016-11-17' })
+   *   .then(res => {
+   *     const hit = res.results[0].find(m => m.hit).content;
+   *     console.log(`I found: **${hit}**, total results: ${res.total}`);
+   *   })
+   *   .catch(console.error);
+   */
+  search(options = {}) {
+    return Shared.search(this, options);
   }
 
   /**
@@ -352,11 +370,28 @@ class TextBasedChannel {
     throw new TypeError('MESSAGE_BULK_DELETE_TYPE');
   }
 
+  /**
+   * Marks all messages in this channel as read.
+   * <warn>This is only available when using a user account.</warn>
+   * @returns {Promise<TextChannel|GroupDMChannel|DMChannel>}
+   */
+  async acknowledge() {
+    if (!this.lastMessageID) return Promise.resolve(this);
+    return await this.client.api.channels[this.id].messages[this.lastMessageID].ack
+      .post({ data: { token: this.client.rest._ackToken } })
+      .then(res => {
+        if (res.token) this.client.rest._ackToken = res.token;
+        return this;
+      });
+  }
+
   static applyToClass(structure, full = false, ignore = []) {
     const props = ['send'];
     if (full) {
       props.push(
-        'lastMessage',
+		'acknowledge',
+		'lastMessage',
+		'search',
         'lastPinAt',
         'bulkDelete',
         'startTyping',

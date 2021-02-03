@@ -22,6 +22,7 @@ const { Error, RangeError } = require('../errors');
  * @property {PartialType[]} [partials] Structures allowed to be partial. This means events can be emitted even when
  * they're missing all the data for a particular structure. See the "Partials" topic listed in the sidebar for some
  * important usage information, as partials require you to put checks in place when handling data.
+ * @property {boolean} [sync=false] Whether to periodically sync guilds (for user accounts)
  * @property {number} [restWsBridgeTimeout=5000] Maximum time permitted between REST responses and their
  * corresponding websocket events
  * @property {number} [restTimeOffset=500] Extra time in milliseconds to wait before continuing to make REST
@@ -40,6 +41,7 @@ exports.DefaultOptions = {
   messageCacheLifetime: 0,
   messageSweepInterval: 0,
   partials: [],
+  sync: false,
   restWsBridgeTimeout: 5000,
   restRequestTimeout: 15000,
   retryLimit: 1,
@@ -254,6 +256,9 @@ exports.Events = {
   MESSAGE_REACTION_REMOVE_ALL: 'messageReactionRemoveAll',
   MESSAGE_REACTION_REMOVE_EMOJI: 'messageReactionRemoveEmoji',
   USER_UPDATE: 'userUpdate',
+  USER_NOTE_UPDATE: 'userNoteUpdate',
+  USER_SETTINGS_UPDATE: 'clientUserSettingsUpdate',
+  USER_GUILD_SETTINGS_UPDATE: 'clientUserGuildSettingsUpdate',
   PRESENCE_UPDATE: 'presenceUpdate',
   VOICE_SERVER_UPDATE: 'voiceServerUpdate',
   VOICE_STATE_UPDATE: 'voiceStateUpdate',
@@ -300,6 +305,7 @@ exports.PartialTypes = keyMirror(['USER', 'CHANNEL', 'GUILD_MEMBER', 'MESSAGE', 
  * The type of a websocket message event, e.g. `MESSAGE_CREATE`. Here are the available events:
  * * READY
  * * RESUMED
+ * * GUILD_SYNC
  * * GUILD_CREATE
  * * GUILD_DELETE
  * * GUILD_UPDATE
@@ -329,16 +335,22 @@ exports.PartialTypes = keyMirror(['USER', 'CHANNEL', 'GUILD_MEMBER', 'MESSAGE', 
  * * MESSAGE_REACTION_REMOVE_ALL
  * * MESSAGE_REACTION_REMOVE_EMOJI
  * * USER_UPDATE
+ * * USER_NOTE_UPDATE
+ * * USER_SETTINGS_UPDATE
+ * * USER_GUILD_SETTINGS_UPDATE
  * * PRESENCE_UPDATE
  * * TYPING_START
  * * VOICE_STATE_UPDATE
  * * VOICE_SERVER_UPDATE
+ * * RELATIONSHIP_ADD
+ * * RELATIONSHOP_REMOVE
  * * WEBHOOKS_UPDATE
  * @typedef {string} WSEventType
  */
 exports.WSEvents = keyMirror([
   'READY',
   'RESUMED',
+  'GUILD_SYNC',
   'GUILD_CREATE',
   'GUILD_DELETE',
   'GUILD_UPDATE',
@@ -368,10 +380,15 @@ exports.WSEvents = keyMirror([
   'MESSAGE_REACTION_REMOVE_ALL',
   'MESSAGE_REACTION_REMOVE_EMOJI',
   'USER_UPDATE',
+  'USER_NOTE_UPDATE',
+  'USER_SETTINGS_UPDATE',
+  'USER_GUILD_SETTINGS_UPDATE',
   'PRESENCE_UPDATE',
   'TYPING_START',
   'VOICE_STATE_UPDATE',
   'VOICE_SERVER_UPDATE',
+  'RELATIONSHIP_ADD',
+  'RELATIONSHIP_REMOVE',
   'WEBHOOKS_UPDATE',
 ]);
 
@@ -438,6 +455,218 @@ exports.SystemMessageTypes = exports.MessageTypes.filter(type => type && type !=
  * @typedef {string} ActivityType
  */
 exports.ActivityTypes = ['PLAYING', 'STREAMING', 'LISTENING', 'WATCHING', 'CUSTOM_STATUS', 'COMPETING'];
+
+exports.ExplicitContentFilterTypes = [
+  'DISABLED',
+  'NON_FRIENDS',
+  'FRIENDS_AND_NON_FRIENDS',
+];
+
+exports.MessageNotificationTypes = [
+	'EVERYTHING',
+	'MENTIONS',
+	'NOTHING',
+	'INHERIT',
+  ];
+
+exports.UserSettingsMap = {
+  /**
+   * Automatically convert emoticons in your messages to emoji,
+   * for example when you type `:-)` Discord will convert it to 😃
+   * @name ClientUserSettings#convertEmoticons
+   * @type {boolean}
+   */
+  convert_emoticons: 'convertEmoticons',
+
+  /**
+   * If new guilds should automatically disable DMs between you and its members
+   * @name ClientUserSettings#defaultGuildsRestricted
+   * @type {boolean}
+   */
+  default_guilds_restricted: 'defaultGuildsRestricted',
+
+  /**
+   * Automatically detect accounts from services like Steam and Blizzard when you open the Discord client
+   * @name ClientUserSettings#detectPlatformAccounts
+   * @type {boolean}
+   */
+  detect_platform_accounts: 'detectPlatformAccounts',
+
+  /**
+   * Developer Mode exposes context menu items helpful for people writing bots using the Discord API
+   * @name ClientUserSettings#developerMode
+   * @type {boolean}
+   */
+  developer_mode: 'developerMode',
+
+  /**
+   * Allow playback and usage of the `/tts` command
+   * @name ClientUserSettings#enableTTSCommand
+   * @type {boolean}
+   */
+  enable_tts_command: 'enableTTSCommand',
+
+  /**
+   * The theme of the client. Either `light` or `dark`
+   * @name ClientUserSettings#theme
+   * @type {string}
+   */
+  theme: 'theme',
+
+  /**
+   * Last status set in the client
+   * @name ClientUserSettings#status
+   * @type {PresenceStatus}
+   */
+  status: 'status',
+
+  /**
+   * Display currently running game as status message
+   * @name ClientUserSettings#showCurrentGame
+   * @type {boolean}
+   */
+  show_current_game: 'showCurrentGame',
+
+  /**
+   * Display images, videos, and lolcats when uploaded directly to Discord
+   * @name ClientUserSettings#inlineAttachmentMedia
+   * @type {boolean}
+   */
+  inline_attachment_media: 'inlineAttachmentMedia',
+
+  /**
+   * Display images, videos, and lolcats when posted as links in chat
+   * @name ClientUserSettings#inlineEmbedMedia
+   * @type {boolean}
+   */
+  inline_embed_media: 'inlineEmbedMedia',
+
+  /**
+   * Language the Discord client will use, as an RFC 3066 language identifier
+   * @name ClientUserSettings#locale
+   * @type {string}
+   */
+  locale: 'locale',
+
+  /**
+   * Display messages in compact mode
+   * @name ClientUserSettings#messageDisplayCompact
+   * @type {boolean}
+   */
+  message_display_compact: 'messageDisplayCompact',
+
+  /**
+   * Show emoji reactions on messages
+   * @name ClientUserSettings#renderReactions
+   * @type {boolean}
+   */
+  render_reactions: 'renderReactions',
+
+  /**
+   * Array of snowflake IDs for guilds, in the order they appear in the Discord client
+   * @name ClientUserSettings#guildPositions
+   * @type {Snowflake[]}
+   */
+  guild_positions: 'guildPositions',
+
+  /**
+   * Array of snowflake IDs for guilds which you will not recieve DMs from
+   * @name ClientUserSettings#restrictedGuilds
+   * @type {Snowflake[]}
+   */
+  restricted_guilds: 'restrictedGuilds',
+
+  explicit_content_filter: function explicitContentFilter(type) { // eslint-disable-line func-name-matching
+    /**
+     * Safe direct messaging; force people's messages with images to be scanned before they are sent to you.
+     * One of `DISABLED`, `NON_FRIENDS`, `FRIENDS_AND_NON_FRIENDS`
+     * @name ClientUserSettings#explicitContentFilter
+     * @type {string}
+     */
+    return exports.ExplicitContentFilterTypes[type];
+  },
+  friend_source_flags: function friendSources(flags) { // eslint-disable-line func-name-matching
+    /**
+     * Who can add you as a friend
+     * @name ClientUserSettings#friendSources
+     * @type {Object}
+     * @property {boolean} all Mutual friends and mutual guilds
+     * @property {boolean} mutualGuilds Only mutual guilds
+     * @property {boolean} mutualFriends Only mutual friends
+     */
+    return {
+      all: flags.all || false,
+      mutualGuilds: flags.all ? true : flags.mutual_guilds || false,
+      mutualFriends: flags.all ? true : flags.mutualFriends || false,
+    };
+  },
+};
+exports.UserGuildSettingsMap = {
+  message_notifications: function messageNotifications(type) { // eslint-disable-line func-name-matching
+    /**
+     * The type of message that should notify you.
+     * One of `EVERYTHING`, `MENTIONS`, `NOTHING`
+     * @name ClientUserGuildSettings#messageNotifications
+     * @type {string}
+     */
+    return exports.MessageNotificationTypes[type];
+  },
+  /**
+   * Whether to receive mobile push notifications
+   * @name ClientUserGuildSettings#mobilePush
+   * @type {boolean}
+   */
+  mobile_push: 'mobilePush',
+  /**
+   * Whether the guild is muted or not
+   * @name ClientUserGuildSettings#muted
+   * @type {boolean}
+   */
+  muted: 'muted',
+  /**
+   * Whether to suppress everyone messages
+   * @name ClientUserGuildSettings#suppressEveryone
+   * @type {boolean}
+   */
+  suppress_everyone: 'suppressEveryone',
+  /**
+   * A collection containing all the channel overrides
+   * @name ClientUserGuildSettings#channelOverrides
+   * @type {Collection<ClientUserChannelOverride>}
+   */
+  channel_overrides: 'channelOverrides',
+};
+
+exports.UserChannelOverrideMap = {
+  message_notifications: function messageNotifications(type) { // eslint-disable-line func-name-matching
+    /**
+     * The type of message that should notify you.
+     * One of `EVERYTHING`, `MENTIONS`, `NOTHING`, `INHERIT`
+     * @name ClientUserChannelOverride#messageNotifications
+     * @type {string}
+     */
+    return exports.MessageNotificationTypes[type];
+  },
+  /**
+   * Whether the channel is muted or not
+   * @name ClientUserChannelOverride#muted
+   * @type {boolean}
+   */
+  muted: 'muted',
+};
+
+/**
+ * All flags users can have:
+ * * STAFF
+ * * PARTNER
+ * * HYPESQUAD
+ * @typedef {string} UserFlags
+ */
+exports.UserFlags = {
+  STAFF: 1 << 0,
+  PARTNER: 1 << 1,
+  HYPESQUAD: 1 << 2,
+};
 
 exports.ChannelTypes = {
   TEXT: 0,
